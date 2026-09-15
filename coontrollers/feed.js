@@ -1,6 +1,7 @@
 const { validationResult } = require('express-validator');
 const Post = require('../model/post');
 const fileHelper = require('../util/file')
+const User = require('../model/user')
 
 exports.getPosts = async (req, res, next) => {
     try{
@@ -62,15 +63,18 @@ exports.postPost = async (req, res, next) => {
             title: title,
             content:content,
             imageUrl: imageUrl,
-            creator: {
-                name: 'Gabriel'
-            }
+            creator: req.userId
         }).save();
+
+        const user = await User.findById(req.userId);
+        user.posts.push(post);
+        user.save();
 
         res.status(201).json(
             {   
                 message: 'Post created successfully!', 
-                post: post
+                post: post,
+                creator: {_id: user._id, name: user.name}
             }
         );
     }catch(err){
@@ -90,6 +94,13 @@ exports.updatePost = async (req, res, next) => {
             error.statusCode = 404;
             throw error;
         }
+
+        if(post.creator.toString() !== req.userId.toString()){
+            const error = new Error('User not allowed to update this content');
+            error.statusCode = 403;
+            throw error;
+        }
+
         post.title = req.body.title;
         post.content = req.body.content;
         if(req.file){
@@ -118,9 +129,20 @@ exports.deletePost = async (req, res, next) => {
             error.statusCode = 404;
             throw error;
         }
+
+         if(post.creator.toString() !== req.userId.toString()){
+            const error = new Error('User not allowed to delete this content');
+            error.statusCode = 403;
+            throw error;
+        }
+
         if(post.imageUrl){
             fileHelper.deleteFile(post.imageUrl);
         }
+
+        const user = await User.findById(req.userId);
+        user.posts.pull(postId)
+        user.save();
         await post.deleteOne()
 
         res.status(200).json({message: "Post deleted successfully!"})

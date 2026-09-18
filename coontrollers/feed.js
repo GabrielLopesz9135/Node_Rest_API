@@ -3,6 +3,8 @@ const Post = require('../model/post');
 const fileHelper = require('../util/file')
 const User = require('../model/user')
 
+const io = require('../socket');
+
 exports.getPosts = async (req, res, next) => {
     try{
         const currentPage = req.query.page || 1;
@@ -70,6 +72,8 @@ exports.postPost = async (req, res, next) => {
         user.posts.push(post);
         user.save();
 
+        io.getIO().emit('posts', {action: 'create', post: {...post._doc, creator: {_id: user._id, name: user.name}}})
+
         res.status(201).json(
             {   
                 message: 'Post created successfully!', 
@@ -88,14 +92,14 @@ exports.postPost = async (req, res, next) => {
 exports.updatePost = async (req, res, next) => {
     try{
         const postId = req.params.postId;
-        const post = await Post.findById(postId);
+        const post = await Post.findById(postId).populate('creator');
         if(!post){
             const error = new Error('Could not find post to update');
             error.statusCode = 404;
             throw error;
         }
 
-        if(post.creator.toString() !== req.userId.toString()){
+        if(post.creator._id.toString() !== req.userId.toString()){
             const error = new Error('User not allowed to update this content');
             error.statusCode = 403;
             throw error;
@@ -110,6 +114,8 @@ exports.updatePost = async (req, res, next) => {
             post.imageUrl = req.file.path.replace("\\" ,"/");
         }
         const result = await post.save();
+
+        io.getIO().emit('posts', {action: 'update', post: result})
 
         res.status(200).json({message: "Product Updated",  post: result})
     }catch(err){
